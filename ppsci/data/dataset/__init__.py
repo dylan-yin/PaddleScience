@@ -43,6 +43,7 @@ from ppsci.data.dataset.trphysx_dataset import CylinderDataset
 from ppsci.data.dataset.trphysx_dataset import LorenzDataset
 from ppsci.data.dataset.trphysx_dataset import RosslerDataset
 from ppsci.data.dataset.vtu_dataset import VtuDataset
+from ppsci.data.dataset.stafnet_dataset import STAFNetDataset
 from ppsci.data.process import transform
 from ppsci.utils import logger
 
@@ -79,6 +80,7 @@ __all__ = [
     "ExtMoEENSODataset",
     "SEVIRDataset",
     "build_dataset",
+    "STAFNetDataset"
 ]
 
 
