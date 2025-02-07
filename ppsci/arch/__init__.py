@@ -61,6 +61,7 @@ from ppsci.arch.moflow_net import MoFlowNet, MoFlowProp  # isort:skip
 from ppsci.utils import logger  # isort:skip
 from ppsci.arch.regdgcnn import RegDGCNN  # isort:skip
 from ppsci.arch.ifm_mlp import IFMMLP  # isort:skip
+from ppsci.arch.stafnet import STAFNet  # isort:skip
 
 __all__ = [
     "MoFlowNet",
@@ -111,6 +112,7 @@ __all__ = [
     "VelocityGenerator",
     "RegDGCNN",
     "IFMMLP",
+    "STAFNet",
 ]
 
 
