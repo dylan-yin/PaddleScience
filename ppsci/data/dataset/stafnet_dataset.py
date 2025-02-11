@@ -88,12 +88,6 @@ class STAFNetDataset(io.Dataset):
          seq_len: int = 72,
          pred_len: int = 48,
          use_edge_attr: bool = True,):
-        """
-        root: 数据集保存的地方。
-        会产生两个文件夹：
-          raw_dir(downloaded dataset) 和 processed_dir(processed data)。
-        """
-        
         self.file_path = file_path
         self.input_keys = input_keys
         self.label_keys = label_keys
