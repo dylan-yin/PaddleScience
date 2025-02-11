@@ -1,13 +1,9 @@
 import paddle
 import paddle.nn as nn
-import os
 import numpy as np
 import math
 from math import sqrt
-# from Embed import DataEmbedding
-import argparse
 from ppsci.arch import base
-from tqdm import tqdm
 from pgl.nn.conv import GATv2Conv
 from typing import TYPE_CHECKING
 from typing import Dict
@@ -187,16 +183,39 @@ def FFT_for_Period(x, k=2):
 
 
 class TimesBlock(paddle.nn.Layer):
+    """Times Block for Spatio-Temporal Attention Fusion Network.
 
-    def __init__(self, configs):
+    Args:
+        seq_len (int): Sequence length.
+        pred_len (int): Prediction length.
+        top_k (int): Number of top frequencies to consider.
+        num_kernels (int): Number of kernels in Inception block.
+        d_model (int): Dimension of the model.
+        d_ff (int): Dimension of feedforward network.
+
+    Examples:
+        >>> from ppsci.arch.stafnet import TimesBlock
+        >>> block = TimesBlock(seq_len=72, pred_len=48, top_k=2, num_kernels=32, d_model=512, d_ff=2048)
+        >>> x = paddle.rand([32, 72, 512])  # [batch_size, seq_len, d_model]
+        >>> output = block(x)
+        >>> print(output.shape)
+        [32, 120, 512]
+    """
+    def __init__(self, 
+        seq_len: int, 
+        pred_len: int, 
+        top_k: int, 
+        num_kernels: int,
+        d_model: int,
+        d_ff: int, ):
         super(TimesBlock, self).__init__()
-        self.seq_len = configs.seq_len
-        self.pred_len = configs.pred_len
-        self.k = configs.top_k
-        self.conv = paddle.nn.Sequential(Inception_Block_V1(configs.d_model,
-            configs.d_ff, num_kernels=configs.num_kernels), paddle.nn.GELU(
-            ), Inception_Block_V1(configs.d_ff, configs.d_model,
-            num_kernels=configs.num_kernels))
+        self.seq_len = seq_len
+        self.pred_len = pred_len
+        self.k = top_k
+        self.conv = paddle.nn.Sequential(Inception_Block_V1(d_model,
+            d_ff, num_kernels=num_kernels), paddle.nn.GELU(
+            ), Inception_Block_V1(d_ff, d_model,
+            num_kernels=num_kernels))
 
     def forward(self, x):
         B, T, N = tuple(x.shape)
@@ -220,9 +239,6 @@ class TimesBlock(paddle.nn.Layer):
         res = paddle.stack(x=res, axis=-1)
         period_weight_raw = period_weight
         period_weight = paddle.nn.functional.softmax(x=period_weight, axis=1)
-        # print(period_weight.unsqueeze(axis=1).unsqueeze(axis=1).shape)
-        # period_weight = period_weight.unsqueeze(axis=1).unsqueeze(axis=1
-        #     ).repeat(1, T, N, 1)
         period_weight = paddle.tile(period_weight.unsqueeze(axis=1).unsqueeze(axis=1
             ), (1, T, N, 1))
         res = paddle.sum(x=res * period_weight, axis=-1)
@@ -435,53 +451,134 @@ class GAT_Encoder(paddle.nn.Layer):
 
 
 class STAFNet(base.Arch):
+    """Spatio-Temporal Attention Fusion Network (STAFNet).
 
+    STAFNet is a neural network architecture for spatio-temporal data prediction, combining attention mechanisms and convolutional neural networks to capture spatio-temporal dependencies.
+
+    Args:
+        input_keys (Tuple[str, ...]): Keys of input variables.
+        output_keys (Tuple[str, ...]): Keys of output variables.
+        seq_len (int): Sequence length.
+        pred_len (int): Prediction length.
+        aq_gat_node_num (int): Number of nodes in the air quality GAT.
+        aq_gat_node_features (int): Number of features for each node in the air quality GAT.
+        mete_gat_node_num (int): Number of nodes in the meteorological GAT.
+        mete_gat_node_features (int): Number of features for each node in the meteorological GAT.
+        gat_hidden_dim (int): Hidden dimension of the GAT.
+        gat_edge_dim (int): Edge dimension of the GAT.
+        d_model (int): Dimension of the model.
+        n_heads (int): Number of attention heads.
+        e_layers (int): Number of encoder layers.
+        enc_in (int): Encoder input dimension.
+        dec_in (int): Decoder input dimension.
+        freq (str): Frequency for positional encoding.
+        embed (str): Embedding type.
+        d_ff (int): Dimension of feedforward network.
+        top_k (int): Number of top frequencies to consider.
+        num_kernels (int): Number of kernels in Inception block.
+        dropout (float): Dropout rate.
+        output_attention (bool): Whether to output attention.
+        factor (int): Factor for attention mechanism.
+        c_out (int): Output channels.
+
+    Examples:
+        >>> from ppsci.arch import STAFNet
+        >>> model = STAFNet(
+        ...     input_keys=('x', 'y', 'z'),
+        ...     output_keys=('u', 'v'),
+        ...     seq_len=72,
+        ...     pred_len=48,
+        ...     aq_gat_node_num=10,
+        ...     aq_gat_node_features=16,
+        ...     mete_gat_node_num=10,
+        ...     mete_gat_node_features=16,
+        ...     gat_hidden_dim=32,
+        ...     gat_edge_dim=8,
+        ...     d_model=512,
+        ...     n_heads=8,
+        ...     e_layers=3,
+        ...     enc_in=7,
+        ...     dec_in=7,
+        ...     freq='h',
+        ...     embed='fixed',
+        ...     d_ff=2048,
+        ...     top_k=5,
+        ...     num_kernels=32,
+        ...     dropout=0.1,
+        ...     output_attention=False,
+        ...     factor=5,
+        ...     c_out=7,
+        ... )
+        >>> input_dict = {"x": paddle.rand([32, 72, 7]),
+        ...               "y": paddle.rand([32, 72, 7]),
+        ...               "z": paddle.rand([32, 72, 7])}
+        >>> output_dict = model(input_dict)
+        >>> print(output_dict["u"].shape)
+        [32, 48, 7]
+        >>> print(output_dict["v"].shape)
+        [32, 48, 7]
+    """
+ 
     def __init__(
-        self,
+       self,
         input_keys: Tuple[str, ...],
         output_keys: Tuple[str, ...],
-        configs, **kwargs):
+        seq_len: int,
+        pred_len: int,
+        aq_gat_node_num: int,
+        aq_gat_node_features: int,
+        mete_gat_node_num: int,
+        mete_gat_node_features: int,
+        gat_hidden_dim: int,
+        gat_edge_dim: int,
+        d_model: int,
+        n_heads: int,
+        e_layers: int,
+        enc_in: int,
+        dec_in: int,
+        freq: str,
+        embed: str,
+        d_ff: int,
+        top_k: int,
+        num_kernels: int,
+        dropout: float,
+        output_attention: bool,
+        factor: int,
+        c_out: int,
+    ):
         super(STAFNet, self).__init__()
-        # configs = argparse.Namespace(**configs)
         self.input_keys = input_keys
         self.output_keys = output_keys
         self.device = str('cuda').replace('cuda', 'gpu')
-        self.configs = configs
-        if hasattr(configs, 'output_attention'):
-            self.output_attention = configs.output_attention
-        else:
-            self.output_attention = False
-        self.seq_len = configs.seq_len
-        self.label_len = configs.label_len
-        self.pred_len = configs.pred_len
-        self.dec_in = configs.dec_in
-        self.gat_embed_dim = configs.enc_in
-        self.enc_embedding = DataEmbedding(configs.enc_in, configs.d_model,
-            configs.embed, configs.freq, configs.dropout)
-        self.aq_gat_node_num = configs.aq_gat_node_num
-        self.aq_gat_node_features = configs.aq_gat_node_features
-        self.aq_GAT = GAT_Encoder(configs.aq_gat_node_features, configs.
-            gat_hidden_dim, configs.gat_edge_dim, self.gat_embed_dim,
-            configs.dropout).to(self.device)
-        self.mete_gat_node_num = configs.mete_gat_node_num
-        self.mete_gat_node_features = configs.mete_gat_node_features
-        self.mete_GAT = GAT_Encoder(configs.mete_gat_node_features, configs
-            .gat_hidden_dim, configs.gat_edge_dim, self.gat_embed_dim,
-            configs.dropout).to(self.device)
-        self.pos_fc = paddle.nn.Linear(in_features=2, out_features=configs.
-            gat_embed_dim, bias_attr=True)
-        self.fusion_Attention = AttentionLayer(ProbAttention(False, configs
-            .factor, attention_dropout=configs.dropout, output_attention=
-            self.output_attention), configs.gat_embed_dim, configs.n_heads)
-        self.model = paddle.nn.LayerList(sublayers=[TimesBlock(configs) for
-            _ in range(configs.e_layers)])
-        self.layer = configs.e_layers
-        self.layer_norm = paddle.nn.LayerNorm(normalized_shape=configs.d_model)
+        self.output_attention = output_attention
+        self.seq_len = seq_len
+        self.pred_len = pred_len
+        self.dec_in = dec_in
+        self.gat_embed_dim = enc_in
+        self.enc_embedding = DataEmbedding(enc_in, d_model,
+            embed, freq, dropout)
+        self.aq_gat_node_num = aq_gat_node_num
+        self.aq_gat_node_features = aq_gat_node_features
+        self.aq_GAT = GAT_Encoder(aq_gat_node_features, 
+            gat_hidden_dim, gat_edge_dim, self.gat_embed_dim,
+            dropout).to(self.device)
+        self.mete_gat_node_num = mete_gat_node_num
+        self.mete_gat_node_features = mete_gat_node_features
+        self.mete_GAT = GAT_Encoder(mete_gat_node_features, gat_hidden_dim, gat_edge_dim, self.gat_embed_dim,
+            dropout).to(self.device)
+        self.pos_fc = paddle.nn.Linear(in_features=2, out_features=
+            self.gat_embed_dim, bias_attr=True)
+        self.fusion_Attention = AttentionLayer(ProbAttention(False, factor, attention_dropout=dropout, output_attention=
+            self.output_attention), self.gat_embed_dim, n_heads)
+        self.model = paddle.nn.LayerList(sublayers=[TimesBlock( seq_len, pred_len, top_k, num_kernels,d_model,d_ff) for
+            _ in range(e_layers)])
+        self.layer = e_layers
+        self.layer_norm = paddle.nn.LayerNorm(normalized_shape=d_model)
         self.predict_linear = paddle.nn.Linear(in_features=self.seq_len,
             out_features=self.pred_len + self.seq_len)
-        self.projection = paddle.nn.Linear(in_features=configs.d_model,
-            out_features=configs.c_out, bias_attr=True)
-
+        self.projection = paddle.nn.Linear(in_features=d_model,
+            out_features=c_out, bias_attr=True)
+        self.output_attention = output_attention
 
     def aq_gat(self, G):
         # x = G.x[:, -self.aq_gat_node_features:].to(self.device)
