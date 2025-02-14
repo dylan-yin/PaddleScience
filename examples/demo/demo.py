@@ -60,12 +60,6 @@ def train(cfg: DictConfig):
     solver.train()
 
 def evaluate(cfg: DictConfig):
-    """
-    Validate after training an epoch
-
-    :param epoch: Integer, current training epoch.
-    :return: A log that contains information about validation
-    """
     model = ppsci.arch.STAFNet(**cfg.MODEL) 
     eval_dataloader_cfg= {
         "dataset": {
