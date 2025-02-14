@@ -17,24 +17,6 @@ def train(cfg: DictConfig):
             "label_keys": cfg.MODEL.output_keys,
             "seq_len": cfg.MODEL.seq_len,
             "pred_len": cfg.MODEL.pred_len,
-
-        },
-        "batch_size": cfg.TRAIN.batch_size,
-        "sampler": {
-            "name": "BatchSampler",
-            "drop_last": False,
-            "shuffle": True,
-        },
-        "collate_fn": gat_lstmcollate_fn,
-    }
-    eval_dataloader_cfg= {
-        "dataset": {
-            "name": "STAFNetDataset",
-            "file_path": cfg.EVAL.eval_data_path,
-            "input_keys": cfg.MODEL.input_keys,
-            "label_keys": cfg.MODEL.output_keys,
-            "seq_len": cfg.MODEL.seq_len,
-            "pred_len": cfg.MODEL.pred_len,
         },
         "batch_size": cfg.TRAIN.batch_size,
         "sampler": {
@@ -51,18 +33,10 @@ def train(cfg: DictConfig):
         name="STAFNet_Sup",
     )
     constraint = {sup_constraint.name: sup_constraint}
-    sup_validator = ppsci.validate.SupervisedValidator(
-        eval_dataloader_cfg,
-        loss=ppsci.loss.MSELoss("mean"),
-        metric={"MSE": ppsci.metric.MSE()},
-        name="Sup_Validator",
-    )
-    validator = {sup_validator.name: sup_validator}
     
-     # set optimizer
+      # set optimizer
     lr_scheduler = ppsci.optimizer.lr_scheduler.Step(**cfg.TRAIN.lr_scheduler)()
-    LEARNING_RATE = cfg.TRAIN.lr_scheduler.learning_rate
-    optimizer = ppsci.optimizer.Adam(LEARNING_RATE)(model)
+    optimizer = ppsci.optimizer.Adam(lr_scheduler)(model)
     output_dir = cfg.output_dir
     ITERS_PER_EPOCH = len(sup_constraint.data_loader)
 
@@ -131,7 +105,6 @@ def evaluate(cfg: DictConfig):
     # evaluate model
     solver.eval()
 
-
 @hydra.main(version_base=None, config_path="./conf", config_name="stafnet.yaml")
 def main(cfg: DictConfig):
     if cfg.mode == "train":
@@ -142,12 +115,4 @@ def main(cfg: DictConfig):
         raise ValueError(f"cfg.mode should in ['train', 'eval'], but got '{cfg.mode}'")
 
 if __name__ == "__main__":
-    # set random seed for reproducibility
-    ppsci.utils.misc.set_random_seed(42)
-    # set output directory
-    OUTPUT_DIR = "./output_example"
-    # initialize logger
-    logger.init_logger("ppsci", f"{OUTPUT_DIR}/train.log", "info")
-    multiprocessing.set_start_method("spawn")
-
     main()
