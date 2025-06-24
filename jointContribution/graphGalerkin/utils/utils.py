@@ -1,11 +1,9 @@
 from paddle import Tensor
 from typing import Optional, Tuple, Union
 import paddle
-
+import pgl
 from scatter import scatter, scatter_add
 OptTensor = Optional[Tensor]
-
-import pgl
 
 class Data():
     def __init__(self, x, y, edge_index):
